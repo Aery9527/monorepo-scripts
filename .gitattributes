@@ -1,0 +1,3 @@
+# Normalize line endings: 全部以 LF 儲存並簽出。
+# .sh 帶 CRLF 在 Linux/macOS 會直接 "bad interpreter"，因此不開任何 CRLF 例外。
+* text=auto eol=lf
