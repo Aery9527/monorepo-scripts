@@ -73,7 +73,9 @@ try {
     # 取得所有 submodule 路徑；先落地成陣列再判斷，才不會讓管線吃掉 $LASTEXITCODE。
     # submodule 名稱預設等於路徑，路徑含空白時「鍵」本身就含空白，因此不能按空格切 key 與
     # value —— 改成先取 key 再逐一 --get 取值。
-    $cfgKeys = @(git config --file .gitmodules --name-only --get-regexp path 2>$null)
+    # regex 必須錨定：未錨定的 "path" 在有名為 lib/pathutil 的 submodule 時會連
+    # submodule.lib/pathutil.url 一起選出，把 URL 當成路徑列舉。
+    $cfgKeys = @(git config --file .gitmodules --name-only --get-regexp '^submodule\..*\.path$' 2>$null)
     if ($LASTEXITCODE -ne 0 -or $cfgKeys.Count -eq 0) {
         throw "No submodules found in this repository (repo root: $projectRoot)"
     }

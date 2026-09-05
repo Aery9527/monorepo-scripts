@@ -58,6 +58,27 @@ resolve_repo_root() {
     (cd "$script_dir/.." && pwd)
 }
 
+# 列出 .gitmodules 中所有 submodule 的 path 值，一行一個；讀不到就輸出空內容。
+#
+# 嚴禁用 awk/cut 對 --get-regexp 的輸出按空格切 key 與 value。submodule 名稱預設等於
+# 它的路徑，路徑含空白時「鍵」本身就含空白，該行沒有可靠的分隔點：
+#     submodule.lib/my dep.path lib/my dep
+#     cut -d' ' -f2-  →  "dep.path lib/my dep"（錯）
+# 正解是先以 --name-only 取鍵，再逐一 --get 取值，完全不做字串切割。
+#
+# regex 必須錨定成 ^submodule\..*\.path$。未錨定的 "path" 會連鍵名以外的欄位一起命中：
+# 名為 lib/pathutil 的 submodule 會讓 submodule.lib/pathutil.url 也被選出，於是 URL
+# 被當成 submodule 路徑列舉。
+list_submodule_paths() {
+    local gitmodules_file="$1" cfg_key value
+    while IFS= read -r cfg_key; do
+        [ -n "$cfg_key" ] || continue
+        value="$(git config --file "$gitmodules_file" --get "$cfg_key" 2>/dev/null)" || continue
+        [ -n "$value" ] || continue
+        printf '%s\n' "$value"
+    done < <(git config --file "$gitmodules_file" --name-only --get-regexp '^submodule\..*\.path$' 2>/dev/null)
+}
+
 # 解析消費端指定的 remote 名稱；未設定時沿用 git 預設的 origin。
 resolve_remote_name() {
     local repo_root="$1" cfg="$1/scripts/config/remote.txt" line name=""

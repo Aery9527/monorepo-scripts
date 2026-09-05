@@ -15,20 +15,8 @@ Write-Host "   Git Submodule Update Branch" -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host ""
 
-# Collect submodule paths from .gitmodules
-$submoduleLines = git config --file .gitmodules --get-regexp path 2>$null
-if ($LASTEXITCODE -ne 0 -or -not $submoduleLines) {
-    Write-Host "ERROR: No submodules found in this repository" -ForegroundColor Red
-    Write-Host "       解析到的 repo root: $RepoRoot" -ForegroundColor Red
-    exit 1
-}
-
-$submodules = @()
-foreach ($line in $submoduleLines) {
-    # -split '\s+', 2 保留 key 之後的完整剩餘內容，避免路徑含空白時被截斷
-    $parts = $line -split '\s+', 2
-    if ($parts.Count -ge 2) { $submodules += $parts[1].Trim() }
-}
+# Collect submodule paths from .gitmodules（解析細節見 lib/repo-context.ps1 的 Get-SubmodulePaths）
+$submodules = @(Get-SubmodulePaths -GitmodulesFile (Join-Path $RepoRoot ".gitmodules"))
 
 if ($submodules.Count -eq 0) {
     Write-Host "ERROR: No submodules found in this repository" -ForegroundColor Red
@@ -108,14 +96,21 @@ function Resolve-GitmodulesSectionByPath {
     # 才能查詢 submodule.<NAME>.branch。
     param([string]$GitmodulesFile, [string]$TargetPath)
 
-    $lines = git config --file $GitmodulesFile --get-regexp '^submodule\..*\.path$' 2>$null
-    foreach ($line in $lines) {
-        if ($line -match '^(submodule\..+)\.path\s+(.+)$') {
-            $key = $Matches[1]
-            $val = $Matches[2].Trim()
-            if ($val -eq $TargetPath) {
-                return ($key -replace '^submodule\.', '')
-            }
+    # 與 Get-SubmodulePaths 同樣的兩步取法：先取鍵再逐一取值，不對 key/value 做字串切割。
+    # 路徑含空白時鍵本身就含空白（submodule.lib/my dep.path），按空白切會同時切壞兩邊。
+    try {
+        $cfgKeys = @(git config --file $GitmodulesFile --name-only --get-regexp '^submodule\..*\.path$' 2>$null)
+    } catch {
+        return ''
+    }
+    if ($LASTEXITCODE -ne 0) { return '' }
+
+    foreach ($cfgKey in $cfgKeys) {
+        if ([string]::IsNullOrWhiteSpace($cfgKey)) { continue }
+        try { $val = git config --file $GitmodulesFile --get $cfgKey 2>$null } catch { continue }
+        if ($LASTEXITCODE -ne 0) { continue }
+        if (([string]$val).Trim() -eq $TargetPath) {
+            return ($cfgKey -replace '^submodule\.', '' -replace '\.path$', '')
         }
     }
     return ''

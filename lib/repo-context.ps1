@@ -55,6 +55,39 @@ function Get-ConsumerRepoRoot {
     return (Resolve-Path -LiteralPath (Join-Path $scriptDirFull "..")).Path
 }
 
+# 列出 .gitmodules 中所有 submodule 的 path 值；讀不到就回傳空陣列。
+#
+# 嚴禁用 -split '\s+', 2 對 --get-regexp 的輸出按空白切 key 與 value。submodule 名稱預設
+# 等於它的路徑，路徑含空白時「鍵」本身就含空白，該行沒有可靠的分隔點：
+#     submodule.lib/my dep.path lib/my dep
+#     -split '\s+', 2  →  "dep.path lib/my dep"（錯）
+# 正解是先以 --name-only 取鍵，再逐一 --get 取值，完全不做字串切割。
+#
+# regex 必須錨定成 ^submodule\..*\.path$。未錨定的 "path" 會連鍵名以外的欄位一起命中：
+# 名為 lib/pathutil 的 submodule 會讓 submodule.lib/pathutil.url 也被選出，於是 URL
+# 被當成 submodule 路徑列舉。
+function Get-SubmodulePaths {
+    param([Parameter(Mandatory)][string]$GitmodulesFile)
+
+    # .gitmodules 缺路徑鍵位是合理失敗；PowerShell 5.1 下 $ErrorActionPreference='Stop' 會把
+    # native command 的 stderr 提升為 terminating error，即使有 2>$null 也一樣，須用 try/catch 吸收。
+    try {
+        $cfgKeys = @(git config --file $GitmodulesFile --name-only --get-regexp '^submodule\..*\.path$' 2>$null)
+    } catch {
+        return @()
+    }
+    if ($LASTEXITCODE -ne 0) { return @() }
+
+    $paths = @()
+    foreach ($cfgKey in $cfgKeys) {
+        if ([string]::IsNullOrWhiteSpace($cfgKey)) { continue }
+        try { $value = git config --file $GitmodulesFile --get $cfgKey 2>$null } catch { continue }
+        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($value)) { continue }
+        $paths += ([string]$value).Trim()
+    }
+    return $paths
+}
+
 # 解析消費端指定的 remote 名稱；未設定時沿用 git 預設的 origin。
 function Get-RemoteName {
     param([Parameter(Mandatory)][string]$RepoRoot)

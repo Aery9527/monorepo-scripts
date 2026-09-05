@@ -60,9 +60,12 @@ echo
 
 # 取得所有 submodule 路徑。submodule 名稱預設等於路徑，路徑含空白時「鍵」本身就含空白，
 # 因此不能用 awk/cut 按空格切 key 與 value —— 改成先取 key 再逐一 --get 取值。
+# regex 必須錨定：未錨定的 "path" 在有名為 lib/pathutil 的 submodule 時會連
+# submodule.lib/pathutil.url 一起選出，把 URL 當成路徑列舉。
 mapfile -t SUBMODULES < <(
-    git config --file .gitmodules --name-only --get-regexp path |
+    git config --file .gitmodules --name-only --get-regexp '^submodule\..*\.path$' |
     while IFS= read -r cfg_key; do
+        [ -n "$cfg_key" ] || continue
         git config --file .gitmodules --get "$cfg_key"
     done
 )

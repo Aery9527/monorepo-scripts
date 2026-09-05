@@ -25,27 +25,12 @@ Write-Host "   Git Remote Branch Sync Auditor" -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host ""
 
-# Collect submodule paths from .gitmodules
-# .gitmodules 缺路徑鍵位是合理失敗；PowerShell 5.1 下 $ErrorActionPreference='Stop' 會把
-# native command 的 stderr 提升為 terminating error，即使有 2>$null 也一樣，須用 try/catch 吸收
-try { $rawPaths = git config --file .gitmodules --get-regexp path 2>$null } catch { $rawPaths = $null }
-$gitConfigExit = $LASTEXITCODE
-if ($gitConfigExit -ne 0 -or -not $rawPaths) {
-    Write-Host "ERROR: No submodules found or .gitmodules not readable" -ForegroundColor Red
-    Write-Host "       解析到的 repo root: $RepoRoot" -ForegroundColor Red
-    exit 1
-}
-
-$submodules = @()
-foreach ($line in ($rawPaths -split "`n")) {
-    $line = $line.Trim()
-    if ($line -eq '') { continue }
-    $parts = $line -split '\s+', 2
-    if ($parts.Count -ge 2) { $submodules += $parts[1].Trim() }
-}
+# Collect submodule paths from .gitmodules（解析細節見 lib/repo-context.ps1 的 Get-SubmodulePaths）
+$submodules = @(Get-SubmodulePaths -GitmodulesFile (Join-Path $RepoRoot ".gitmodules"))
 
 if ($submodules.Count -eq 0) {
-    Write-Host "ERROR: No submodules found in this repository" -ForegroundColor Red
+    Write-Host "ERROR: No submodules found or .gitmodules not readable" -ForegroundColor Red
+    Write-Host "       解析到的 repo root: $RepoRoot" -ForegroundColor Red
     exit 1
 }
 

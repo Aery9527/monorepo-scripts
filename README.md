@@ -223,7 +223,7 @@ exit $LASTEXITCODE
 |------|------|
 | 7 組轉發 shim | 與 [link-scripts](link-scripts.sh) 的產出逐位元相同，預先產生好的快照 |
 | [rollback](sample/rollback.sh)（跨平台） | 消費端自有腳本：一次取消 root 與所有 submodule 的本地變更 |
-| [normalize-git-eol](sample/normalize-git-eol.ps1)（僅 Windows） | 消費端自有腳本：對齊 root 與所有 submodule 的換行設定 |
+| [normalize-git-eol](sample/normalize-git-eol.ps1)（Windows） | 消費端自有腳本：對齊 root 與所有 submodule 的換行設定；只有 `.ps1` 是因為 CRLF 寫進 index 只發生在 Windows，但它的 `--renormalize` 在任何平台都會改動 index |
 
 自有腳本同樣不綁定任何特定 repo，外部相依只有 `git` 與 `dirname`，不屬於本工具集的功能，
 [link-scripts](link-scripts.sh) 也不會為它們產生 shim。

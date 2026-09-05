@@ -54,8 +54,8 @@ echo -e "${CYAN}   Git Submodule Branch Merge${NC}"
 echo -e "${CYAN}==========================================${NC}"
 echo
 
-# 取得所有 submodule 路徑（cut 保留空白後的完整值；mapfile 逐行讀入陣列，避免遍歷時被字詞分割）
-mapfile -t SUBMODULES < <(git config --file .gitmodules --get-regexp path | cut -d' ' -f2-)
+# 取得所有 submodule 路徑（mapfile 逐行讀入陣列，避免遍歷時被字詞分割）
+mapfile -t SUBMODULES < <(list_submodule_paths "$PROJECT_ROOT/.gitmodules")
 
 if [ ${#SUBMODULES[@]} -eq 0 ]; then
     echo -e "${RED}ERROR: No submodules found in this repository${NC}"

@@ -1,16 +1,8 @@
 ﻿function Get-FastpathSubmodules {
     param([Parameter(Mandatory)][string]$RepoRoot)
 
-    # .gitmodules 缺路徑鍵位是合理失敗；呼叫端可能以 $ErrorActionPreference='Stop' 執行，
-    # 須用 try/catch 吸收 PS 5.1 把 native command stderr 提升為 terminating error 的問題
-    try { $lines = git config --file (Join-Path $RepoRoot ".gitmodules") --get-regexp path 2>$null } catch { $lines = $null }
-    $result = @()
-    foreach ($line in $lines) {
-        # -split '\s+', 2 保留 key 之後的完整剩餘內容，避免路徑含空白時被截斷
-        $parts = $line -split '\s+', 2
-        if ($parts.Count -ge 2) { $result += $parts[1].Trim() }
-    }
-    return $result
+    # 解析細節見 lib/repo-context.ps1 的 Get-SubmodulePaths（呼叫端一律先 dot-source 它）。
+    return @(Get-SubmodulePaths -GitmodulesFile (Join-Path $RepoRoot ".gitmodules"))
 }
 
 function Get-GitStatusPorcelain {

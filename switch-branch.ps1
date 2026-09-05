@@ -215,13 +215,8 @@ Write-Host "   Git Submodule Branch Switcher" -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host ""
 
-# Collect submodule paths
-$submodules = @()
-foreach ($line in (git config --file .gitmodules --get-regexp path 2>$null)) {
-    # -split '\s+', 2 保留 key 之後的完整剩餘內容，避免路徑含空白時被截斷
-    $parts = $line -split '\s+', 2
-    if ($parts.Count -ge 2) { $submodules += $parts[1].Trim() }
-}
+# Collect submodule paths（解析細節見 lib/repo-context.ps1 的 Get-SubmodulePaths）
+$submodules = @(Get-SubmodulePaths -GitmodulesFile (Join-Path $RepoRoot ".gitmodules"))
 
 if ($submodules.Count -eq 0) {
     Write-Host "ERROR: No submodules found in this repository" -ForegroundColor Red

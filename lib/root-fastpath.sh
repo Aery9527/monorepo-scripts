@@ -6,7 +6,8 @@ FASTPATH_REASON=""
 
 fastpath_get_submodules() {
     local repo_root="$1"
-    git config --file "$repo_root/.gitmodules" --get-regexp path 2>/dev/null | cut -d' ' -f2-
+    # 解析細節見 lib/repo-context.sh 的 list_submodule_paths（呼叫端一律先 source 它）。
+    list_submodule_paths "$repo_root/.gitmodules"
 }
 
 _fastpath_change_info() {

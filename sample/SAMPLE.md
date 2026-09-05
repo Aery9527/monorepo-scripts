@@ -70,11 +70,16 @@
 | 腳本 | 平台 | 用途 |
 |------|------|------|
 | [rollback.sh](rollback.sh) / [rollback.ps1](rollback.ps1) | 跨平台 | 一次取消 root 與所有 submodule 的本地變更 |
-| [normalize-git-eol.ps1](normalize-git-eol.ps1) | 僅 Windows | 對齊 root 與所有 submodule 的換行設定 |
+| [normalize-git-eol.ps1](normalize-git-eol.ps1) | Windows | 對齊 root 與所有 submodule 的換行設定 |
 
-`normalize-git-eol` 只有 `.ps1` 而沒有 `.sh`，這是刻意的：它處理的 `core.autocrlf`、`core.eol`
-只在 Windows 上有實際作用，在 Linux/macOS 執行等同無操作。工具集根目錄「每個工具都有成對
-`.ps1` 與 `.sh`」的規範不適用於本目錄。
+`normalize-git-eol` 只有 `.ps1` 而沒有 `.sh`，這是刻意的：`core.autocrlf` 的預設值只在 Windows 上
+是 `true`，CRLF 被寫進 index 這個問題實際上只發生在 Windows，所以修正工具只需要 Windows 版。
+
+但**它不是在非 Windows 上的空操作**：`-Renormalize` 預設開啟，`git add --renormalize .`
+（[normalize-git-eol.ps1:131](normalize-git-eol.ps1)）在任何平台都會依 `.gitattributes` 重新正規化
+並改動 index。在 Linux/macOS 以 PowerShell Core 執行一樣會產生 staged 變更。
+
+工具集根目錄「每個工具都有成對 `.ps1` 與 `.sh`」的規範不適用於本目錄。
 
 [返回開頭](#sample-nav)
 
@@ -151,8 +156,20 @@ git -C lib/not-inited reset --hard HEAD    # 實際重置的是 root，不是那
 submodule.lib/my dep.path lib/my dep
 ```
 
-用 `awk '{print $2}'` 或 `cut -d' ' -f2-` 按空格切都會取錯。改成先用 `--name-only` 取鍵，再逐一
-`--get <鍵>` 取值，才不受空白影響。
+用 `awk '{print $2}'` 或 `cut -d' ' -f2-` 按空格切都會取錯（會得到 `dep.path lib/my dep`）。改成先用
+`--name-only` 取鍵，再逐一 `--get <鍵>` 取值，全程不做字串切割，才不受空白影響。
+
+regex 還必須錨定成 `^submodule\..*\.path$`。未錨定的 `path` 是子字串比對，會連鍵名以外的欄位一起
+命中 —— 有一個名為 `lib/pathutil` 的 submodule 時，`submodule.lib/pathutil.url` 也會被選出，於是
+URL 被當成 submodule 路徑列舉：
+
+```
+$ git config --file .gitmodules --name-only --get-regexp path
+submodule.lib/pathutil.path
+submodule.lib/pathutil.url      ← 多出來的
+$ git config --file .gitmodules --name-only --get-regexp '^submodule\..*\.path$'
+submodule.lib/pathutil.path
+```
 
 ### 互動輸入失敗即取消
 

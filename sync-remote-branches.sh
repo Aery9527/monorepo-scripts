@@ -33,7 +33,7 @@ echo -e "${CYAN}==========================================${NC}"
 echo
 
 # Collect submodule paths from .gitmodules
-SUBMODULE_LIST=$(git config --file .gitmodules --get-regexp path 2>/dev/null | cut -d' ' -f2-)
+SUBMODULE_LIST=$(list_submodule_paths "$PROJECT_ROOT/.gitmodules")
 if [ -z "$SUBMODULE_LIST" ]; then
     echo -e "${RED}ERROR: No submodules found or .gitmodules not readable${NC}"
     echo -e "${RED}       解析到的 repo root: $PROJECT_ROOT${NC}"

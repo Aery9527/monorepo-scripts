@@ -17,17 +17,12 @@ Write-Host "   Git Submodule Push Branch" -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host ""
 
-# 取得所有 submodule 路徑
-$SUBMODULES = @(git config --file .gitmodules --get-regexp path 2>$null)
-$parsedSubmodules = @()
-foreach ($line in $SUBMODULES) {
-    # -split '\s+', 2 保留 key 之後的完整剩餘內容，避免路徑含空白時被截斷
-    $parts = $line -split '\s+', 2
-    if ($parts.Count -ge 2) { $parsedSubmodules += $parts[1].Trim() }
-}
+# 取得所有 submodule 路徑（解析細節見 lib/repo-context.ps1 的 Get-SubmodulePaths）
+$parsedSubmodules = @(Get-SubmodulePaths -GitmodulesFile (Join-Path $RepoRoot ".gitmodules"))
 
 if ($parsedSubmodules.Count -eq 0) {
     Write-Host "ERROR: No submodules found in this repository" -ForegroundColor Red
+    Write-Host "       解析到的 repo root: $RepoRoot" -ForegroundColor Red
     exit 1
 }
 

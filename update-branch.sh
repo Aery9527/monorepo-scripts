@@ -62,18 +62,19 @@ repo_remote_branch_exists() {
 # 未必等於 path），輸出該 NAME 供呼叫端查詢 submodule.<NAME>.branch。
 resolve_gitmodules_section_by_path() {
     local gitmodules_file="$1" target_path="$2"
-    local line key val name
-    while IFS= read -r line; do
-        [ -z "$line" ] && continue
-        key="${line%% *}"
-        val="${line#* }"
-        name="${key#submodule.}"
-        name="${name%.path}"
+    local cfg_key val name
+    # 與 list_submodule_paths 同樣的兩步取法：先取鍵再逐一取值，不對 key/value 做字串切割。
+    # 路徑含空白時鍵本身就含空白（submodule.lib/my dep.path），按空格切會同時切壞兩邊。
+    while IFS= read -r cfg_key; do
+        [ -n "$cfg_key" ] || continue
+        val="$(git config --file "$gitmodules_file" --get "$cfg_key" 2>/dev/null)" || continue
         if [ "$val" = "$target_path" ]; then
-            echo "$name"
+            name="${cfg_key#submodule.}"
+            name="${name%.path}"
+            printf '%s\n' "$name"
             return 0
         fi
-    done < <(git config --file "$gitmodules_file" --get-regexp '^submodule\..*\.path$' 2>/dev/null)
+    done < <(git config --file "$gitmodules_file" --name-only --get-regexp '^submodule\..*\.path$' 2>/dev/null)
     return 1
 }
 
@@ -218,8 +219,8 @@ echo -e "${CYAN}   Git Submodule Update Branch${NC}"
 echo -e "${CYAN}==========================================${NC}"
 echo
 
-# 取得所有 submodule 路徑（cut 保留空白後的完整值；mapfile 逐行讀入陣列，避免遍歷時被字詞分割）
-mapfile -t SUBMODULES < <(git config --file .gitmodules --get-regexp path | cut -d' ' -f2-)
+# 取得所有 submodule 路徑（mapfile 逐行讀入陣列，避免遍歷時被字詞分割）
+mapfile -t SUBMODULES < <(list_submodule_paths "$PROJECT_ROOT/.gitmodules")
 
 if [ ${#SUBMODULES[@]} -eq 0 ]; then
     echo -e "${RED}ERROR: No submodules found in this repository${NC}"
