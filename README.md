@@ -159,7 +159,8 @@ exit $LASTEXITCODE
 | 耦合 | 硬／軟 | 影響範圍 | 不滿足時的行為 |
 |---|---|---|---|
 | `.gitmodules` 存在且至少一個 submodule | 硬 | 全部分支腳本 | 印出錯誤與解析到的 root 路徑後 `exit 1` |
-| submodule 已 `git submodule update --init` | 軟 | 全部分支腳本 | 未初始化者印出「略過」訊息後排除，不納入任何操作；若全部都未初始化則等同「找不到 submodule」而中止。詳見[備註](#notes) |
+| submodule 已 `git submodule update --init` | 軟 | 分支腳本 | 未初始化者印出「略過」訊息後排除，不對它執行任何 `git -C` 操作；全部都未初始化時等同「找不到 submodule」而中止。詳見[備註](#notes) |
+| submodule 已 `git submodule update --init` | 硬 | 僅 `root-fastpath-commit` | 未初始化**且 gitlink 有變更**時印出錯誤後 `exit 1`，root 絕不 push。無法驗證該 gitlink 是否已發佈，等同不可推送 |
 | 各 repo 都有同名的 git remote | 硬 | 全部涉及遠端的操作 | 預設 `origin`；名稱不同時必須設定 [remote.txt](#config)，否則該 remote 的分支完全不會被列舉：本地也有同名分支的會顯示成「只有本地」，只存在於遠端的則整個不出現 |
 | Git 2.22 以上 | 硬 | 全部 | 啟動時檢查 `git --version`，不足或取不到版本即印出錯誤後中止 |
 | Bash 4.2 以上 | 硬 | 全部 `.sh` | [lib/repo-context.sh](lib/repo-context.sh) 印出版本錯誤後中止 |
@@ -243,6 +244,8 @@ shim 的相對路徑寫死在檔案內，因此改變掛載位置後必須重跑
 - `root-fastpath-commit` 的 push 順序簡化為兩層（submodule 任意順序 → root 最後），不做完整拓撲排序；若消費端的下游 repo 依賴嚴格的 push 順序，必須自行擴充。
 - `lib/` 內的共用函式一律以參數接收 repo root，不自行用相對路徑推導。
 - **未初始化的 submodule 一律排除，不是為了方便，而是為了安全。** `.gitmodules` 有登記但尚未 `git submodule update --init` 的 submodule 在檔案系統上只是一個空目錄，`git -C <該目錄>` 會沿目錄往上找到 superproject，於是 `git -C lib/x branch -D b` 刪掉的是 **root 的分支**、`git -C lib/x checkout b` 切換的是 **root 的 HEAD**、`git -C lib/x fetch` 抓進的是 **root**。因此 [lib/repo-context.sh](lib/repo-context.sh) 的 `list_initialized_submodule_paths` 與 [lib/repo-context.ps1](lib/repo-context.ps1) 的 `Get-InitializedSubmodulePaths` 會先以 `rev-parse --show-toplevel` 確認每個路徑是「它自己的」worktree root，不通過就排除並印出略過訊息。所有腳本一律經由這兩支函式取得 submodule 清單，**嚴禁**直接用 `list_submodule_paths` / `Get-SubmodulePaths` 的結果去做 `git -C` 操作。
+- **但 `root-fastpath-commit` 的 gitlink 驗證必須用未過濾的完整清單。** root 一旦 push，它 tree 裡記錄的每一個 gitlink 都會被發佈，與該 submodule 在本機是否已初始化無關；只驗證已初始化的那些，會讓未初始化者的 gitlink 靜默上遠端，新 clone 因此指向一個從未發佈的 commit。取 gitlink 只對 root 做 `ls-tree`，用完整清單是安全的；真正無法做的是「驗證該 SHA 是否可從遠端觸及」（`branch -r --contains` 會落到 root），因此該情況一律硬中止而非略過。
+- `root-fastpath` 讀 `git status --porcelain` 一律加 `-z`。不加 `-z` 時 git 會把含空白的路徑輸出成 `"lib/real dep"`，而 `.gitmodules` 取到的是不帶引號的 `lib/real dep`，兩者永遠比不中，含空白路徑的 submodule 會被誤判成「非 submodule 檔案」而使 fast-path 永遠不可用（`core.quotePath=false` 無效，它只影響非 ASCII）。`-z` 下 rename/copy 會多輸出一個「原路徑」欄位，必須額外跳過。
 - `link-scripts` 產生的 shim 是**需重跑才更新的快照**，不是活連結；工具集新增或移除工具後，必須重跑 `link-scripts` 並在消費端 repo 重新 commit。
 - `link-scripts` 的 stale 偵測（shim 存在但來源腳本已消失）僅**報告**，不自動刪除，必須由開發者以 `git diff` 審查後自行處理。
 - 執行 `link-scripts` 前必須先在消費端 repo 執行 `git submodule update --init`，確保工具集內容已存在。

@@ -54,21 +54,34 @@ fastpath_check() {
         return 1
     fi
 
-    local status_lines
-    status_lines="$(git -C "$repo_root" status --porcelain 2>/dev/null)"
-    if [ -z "$status_lines" ]; then
+    # 必須用 -z：預設的 --porcelain 會把含空白等特殊字元的路徑用雙引號包起來
+    #     M "lib/real dep"
+    # 而 .gitmodules 取到的值是不帶引號的 lib/real dep，兩者永遠比不中，
+    # 含空白路徑的 submodule 會被誤判成「非 submodule 檔案」而使 fast-path 永遠不可用。
+    # core.quotePath=false 無效（它只影響非 ASCII）；-z 才會輸出未加工的原始路徑。
+    # NUL 無法存進 bash 變數，因此先逐筆讀進陣列再處理。
+    local status_entries=()
+    while IFS= read -r -d '' entry; do
+        status_entries+=("$entry")
+    done < <(git -C "$repo_root" status --porcelain -z 2>/dev/null)
+
+    if [ "${#status_entries[@]}" -eq 0 ]; then
         FASTPATH_REASON="root has no changes"
         echo "fast-path unavailable: $FASTPATH_REASON" >&2
         return 1
     fi
 
     local changed=() non_submodule=()
-    while IFS= read -r line; do
-        [ -z "$line" ] && continue
-        local code="${line:0:2}"
-        local file="${line:3}"
-        file="$(echo "$file" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-        case "$file" in *" -> "*) file="${file##* -> }" ;; esac
+    local idx=0 entry code file
+    # -z 下 rename/copy 會多輸出一個「原路徑」欄位，必須額外跳過，
+    # 否則它會被當成一個獨立項目而誤判為非 submodule 檔案。
+    while [ "$idx" -lt "${#status_entries[@]}" ]; do
+        entry="${status_entries[$idx]}"
+        idx=$((idx + 1))
+        [ ${#entry} -lt 3 ] && continue
+        code="${entry:0:2}"
+        file="${entry:3}"
+        case "$code" in R*|C*) idx=$((idx + 1)) ;; esac
 
         if echo "$submodules" | grep -qxF "$file"; then
             changed+=("$file")
@@ -76,7 +89,7 @@ fastpath_check() {
         fi
         if [ "$code" = "??" ]; then continue; fi
         non_submodule+=("$file")
-    done <<< "$status_lines"
+    done
 
     if [ "${#non_submodule[@]}" -gt 0 ]; then
         FASTPATH_REASON="requires root-only submodule ref changes; non-submodule files changed: $(IFS=,; echo "${non_submodule[*]}")"

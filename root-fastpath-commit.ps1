@@ -78,7 +78,11 @@ try {
 
     Invoke-Step -Title "Fetch & divergence check"
     # 重用 lib/root-fastpath.ps1 已經 dot-source 進來的 Get-FastpathSubmodules，不重新定義
-    $submodules = Get-FastpathSubmodules -RepoRoot $repoRoot
+    $submodules = @(Get-FastpathSubmodules -RepoRoot $repoRoot)
+    if ($submodules.Count -eq 0) {
+        Write-Host "[X] ERROR: failed to enumerate submodules from .gitmodules" -ForegroundColor Red
+        exit 1
+    }
     $branch = git -C $repoRoot branch --show-current
     $allRepos = @(@{ Name = "root"; Path = $repoRoot }) + @($submodules | ForEach-Object { @{ Name = $_; Path = (Join-Path $repoRoot $_) } })
 
@@ -99,15 +103,35 @@ try {
     try { git -C $repoRoot rev-parse --verify "$Remote/$branch" 2>$null 1>$null } catch {}
     if ($LASTEXITCODE -eq 0) { $baseRef = "$Remote/$branch" }
 
+    # 這裡刻意用「未過濾」的完整清單，不能用上面 fetch 用的 $submodules：
+    # root 一旦 push，它 tree 裡記錄的每一個 gitlink 都會被發佈，與該 submodule 在本機是否
+    # 已初始化完全無關。若只驗證已初始化的那些，未初始化者的 gitlink 就會靜默地被推上遠端。
+    # Get-GitlinkSha 只對 $repoRoot 做 ls-tree，不碰 submodule 目錄，因此用完整清單是安全的。
+    $declaredSubs = @(Get-SubmodulePaths -GitmodulesFile (Join-Path $repoRoot ".gitmodules"))
+
     $changed = @()
-    foreach ($sub in $submodules) {
+    $unverifiable = @()
+    foreach ($sub in $declaredSubs) {
         $headSha = Get-GitlinkSha -RepoRoot $repoRoot -Ref "HEAD" -SubPath $sub
         if (-not $headSha) { continue }
         if ($baseRef) {
             $baseSha = Get-GitlinkSha -RepoRoot $repoRoot -Ref $baseRef -SubPath $sub
             if ($headSha -eq $baseSha) { continue }
         }
+        # 未初始化的 submodule 無法驗證其 gitlink 是否已發佈：後面的
+        # git -C $subPath branch -r --contains 會沿目錄往上落到 root，回答的是 root 的問題。
+        # 無法驗證即不可推送 —— 硬中止，不可比照列舉階段的「略過」。
+        if (-not (Test-OwnWorktree -Path (Join-Path $repoRoot $sub))) {
+            $unverifiable += $sub
+            continue
+        }
         $changed += [PSCustomObject]@{ Name = $sub; Sha = $headSha }
+    }
+
+    if ($unverifiable.Count -gt 0) {
+        Write-Host "[X] 下列 submodule 的 gitlink 有變更，但它們未初始化，無法驗證是否已發佈：$($unverifiable -join ', ')" -ForegroundColor Red
+        Write-Host "    請先執行 git submodule update --init 後重跑。Root will NOT be pushed." -ForegroundColor Red
+        exit 1
     }
 
     $behindRepos = @()

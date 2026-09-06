@@ -5,9 +5,16 @@
     return @(Get-InitializedSubmodulePaths -RepoRoot $RepoRoot)
 }
 
+# 必須用 -z：預設的 --porcelain 會把含空白等特殊字元的路徑用雙引號包起來
+#     M "lib/real dep"
+# 而 .gitmodules 取到的值是不帶引號的 lib/real dep，兩者永遠比不中，
+# 含空白路徑的 submodule 會被誤判成「非 submodule 檔案」而使 fast-path 永遠不可用。
+# core.quotePath=false 無效（它只影響非 ASCII）；-z 才會輸出未加工的原始路徑。
 function Get-GitStatusPorcelain {
     param([string]$RepoRoot)
-    return @(git -C $RepoRoot status --porcelain 2>$null | Where-Object { $_ -ne '' })
+    try { $out = git -C $RepoRoot status --porcelain -z 2>$null } catch { $out = $null }
+    $raw = ($out -join "")
+    return @($raw -split "`0" | Where-Object { $_ -ne '' })
 }
 
 function Get-FastpathChangedSubmodules {
@@ -16,10 +23,16 @@ function Get-FastpathChangedSubmodules {
     $allowed = [System.Collections.Generic.HashSet[string]]::new([string[]]$Submodules)
     $changed = @()
     $nonSubmodule = @()
-    foreach ($line in $StatusLines) {
+    # -z 下 rename/copy 會多輸出一個「原路徑」欄位，必須額外跳過，
+    # 否則它會被當成一個獨立項目而誤判為非 submodule 檔案。
+    $i = 0
+    while ($i -lt $StatusLines.Count) {
+        $line = $StatusLines[$i]
+        $i++
+        if ($line.Length -lt 3) { continue }
         $code = $line.Substring(0, 2)
-        $file = $line.Substring(3).Trim()
-        if ($file -match ' -> ') { $file = ($file -split ' -> ')[-1] }
+        $file = $line.Substring(3)
+        if ($code -match '^[RC]') { $i++ }
         if ($allowed.Contains($file)) {
             if ($changed -notcontains $file) { $changed += $file }
             continue

@@ -91,17 +91,37 @@ base_ref=""
 if git -C "$REPO_ROOT" rev-parse --verify "$REMOTE/$branch" >/dev/null 2>&1; then
     base_ref="$REMOTE/$branch"
 fi
+# 這裡刻意用「未過濾」的完整清單，不能用上面 fetch 用的 $submodules：
+# root 一旦 push，它 tree 裡記錄的每一個 gitlink 都會被發佈，與該 submodule 在本機是否
+# 已初始化完全無關。若只驗證已初始化的那些，未初始化者的 gitlink 就會靜默地被推上遠端。
+# gitlink_sha 只對 $REPO_ROOT 做 ls-tree，不碰 submodule 目錄，因此用完整清單是安全的。
+mapfile -t declared_subs < <(list_submodule_paths "$REPO_ROOT/.gitmodules")
+
 changed_subs=()
 changed_shas=()
-for sub in "${submodules[@]}"; do
+unverifiable=()
+for sub in "${declared_subs[@]}"; do
     head_sha="$(gitlink_sha "$REPO_ROOT" HEAD "$sub")" || continue
     if [ -n "$base_ref" ]; then
         base_sha="$(gitlink_sha "$REPO_ROOT" "$base_ref" "$sub" 2>/dev/null || true)"
         [ "$head_sha" = "$base_sha" ] && continue
     fi
+    # 未初始化的 submodule 無法驗證其 gitlink 是否已發佈：後面的
+    # git -C "$sub_path" branch -r --contains 會沿目錄往上落到 root，回答的是 root 的問題。
+    # 無法驗證即不可推送 —— 硬中止，不可比照列舉階段的「略過」。
+    if ! is_own_worktree "$REPO_ROOT/$sub"; then
+        unverifiable+=("$sub")
+        continue
+    fi
     changed_subs+=("$sub")
     changed_shas+=("$head_sha")
 done
+
+if [ "${#unverifiable[@]}" -gt 0 ]; then
+    echo -e "\033[0;31m[X] 下列 submodule 的 gitlink 有變更，但它們未初始化，無法驗證是否已發佈：${unverifiable[*]}\033[0m"
+    echo -e "\033[0;31m    請先執行 git submodule update --init 後重跑。Root will NOT be pushed.\033[0m"
+    exit 1
+fi
 
 behind_repos=()
 div="$(get_divergence "$REPO_ROOT" "$branch")" || {
