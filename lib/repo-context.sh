@@ -79,6 +79,39 @@ list_submodule_paths() {
     done < <(git config --file "$gitmodules_file" --name-only --get-regexp '^submodule\..*\.path$' 2>/dev/null)
 }
 
+# 確認 path 是「它自己的」git worktree root。
+#
+# .gitmodules 有登記但尚未 git submodule update --init 的 submodule，在檔案系統上只是一個
+# 空目錄。對它執行 git -C 會沿目錄往上找到 superproject，於是操作全部落到 root：
+#     git -C lib/not-inited branch -D X    實際刪掉的是 root 的分支
+#     git -C lib/not-inited checkout Y     實際切換的是 root 的 HEAD
+#     git -C lib/not-inited fetch          實際抓進 root
+# 這種破壞靜默且不可逆，凡是要以 git -C 操作 submodule 的路徑都必須先過這道檢查。
+#
+# 用 -ef 比對 inode 而非字串：MSYS 下同一實體目錄可能同時有 /tmp/... 與 /c/... 兩種字面
+# 形式，git 回傳 C:/... 而 pwd 回傳 /c/...，直接比字串會誤判成不相等。
+is_own_worktree() {
+    local path="$1" top
+    [ -d "$path" ] || return 1
+    top="$(git -C "$path" rev-parse --show-toplevel 2>/dev/null)" || return 1
+    [ -n "$top" ] || return 1
+    [ "$top" -ef "$path" ]
+}
+
+# 列出「已初始化」的 submodule 路徑，一行一個；未初始化者印出警告並排除。
+# 所有會以 git -C 操作 submodule 的腳本都應改用本函式，而不是直接用 list_submodule_paths。
+list_initialized_submodule_paths() {
+    local repo_root="$1" sub
+    while IFS= read -r sub; do
+        [ -n "$sub" ] || continue
+        if is_own_worktree "$repo_root/$sub"; then
+            printf '%s\n' "$sub"
+        else
+            printf '  [!] 略過 %s：未初始化或不是獨立的 git worktree，請先執行 git submodule update --init\n' "$sub" >&2
+        fi
+    done < <(list_submodule_paths "$repo_root/.gitmodules")
+}
+
 # 解析消費端指定的 remote 名稱；未設定時沿用 git 預設的 origin。
 resolve_remote_name() {
     local repo_root="$1" cfg="$1/scripts/config/remote.txt" line name=""

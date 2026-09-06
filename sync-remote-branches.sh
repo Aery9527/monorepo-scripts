@@ -32,8 +32,8 @@ echo -e "${CYAN}   Git Remote Branch Sync Auditor${NC}"
 echo -e "${CYAN}==========================================${NC}"
 echo
 
-# Collect submodule paths from .gitmodules
-SUBMODULE_LIST=$(list_submodule_paths "$PROJECT_ROOT/.gitmodules")
+# 取得所有「已初始化」的 submodule 路徑；解析與防護細節見 lib/repo-context.sh。
+SUBMODULE_LIST=$(list_initialized_submodule_paths "$PROJECT_ROOT")
 if [ -z "$SUBMODULE_LIST" ]; then
     echo -e "${RED}ERROR: No submodules found or .gitmodules not readable${NC}"
     echo -e "${RED}       解析到的 repo root: $PROJECT_ROOT${NC}"

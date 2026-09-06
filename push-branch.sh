@@ -29,8 +29,9 @@ echo -e "${CYAN}   Git Submodule Push Branch${NC}"
 echo -e "${CYAN}==========================================${NC}"
 echo
 
-# 取得所有 submodule 路徑（mapfile 逐行讀入陣列，避免遍歷時被字詞分割）
-mapfile -t SUBMODULES < <(list_submodule_paths "$PROJECT_ROOT/.gitmodules")
+# 取得所有「已初始化」的 submodule 路徑；未初始化者會被排除並印出略過訊息。
+# mapfile 逐行讀入陣列，避免遍歷時被字詞分割。解析與防護細節見 lib/repo-context.sh。
+mapfile -t SUBMODULES < <(list_initialized_submodule_paths "$PROJECT_ROOT")
 
 if [ ${#SUBMODULES[@]} -eq 0 ]; then
     echo -e "${RED}ERROR: No submodules found in this repository${NC}"

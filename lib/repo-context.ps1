@@ -88,6 +88,48 @@ function Get-SubmodulePaths {
     return $paths
 }
 
+# 確認 Path 是「它自己的」git worktree root。
+#
+# .gitmodules 有登記但尚未 git submodule update --init 的 submodule，在檔案系統上只是一個
+# 空目錄。對它執行 git -C 會沿目錄往上找到 superproject，於是操作全部落到 root：
+#     git -C lib\not-inited branch -D X    實際刪掉的是 root 的分支
+#     git -C lib\not-inited checkout Y     實際切換的是 root 的 HEAD
+#     git -C lib\not-inited fetch          實際抓進 root
+# 這種破壞靜默且不可逆，凡是要以 git -C 操作 submodule 的路徑都必須先過這道檢查。
+#
+# 必須先 Resolve-Path 再比對：git 回傳 C:/...，PowerShell 組出的是 C:\...，直接比字串必為 False。
+function Test-OwnWorktree {
+    param([Parameter(Mandatory)][string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Container)) { return $false }
+    try { $top = git -C $Path rev-parse --show-toplevel 2>$null } catch { return $false }
+    if ($LASTEXITCODE -ne 0) { return $false }
+    $top = @($top) | Where-Object { $_ -and ([string]$_).Trim() } |
+        Select-Object -First 1 | ForEach-Object { ([string]$_).Trim() }
+    if ([string]::IsNullOrWhiteSpace($top)) { return $false }
+
+    $a = Resolve-Path -LiteralPath $top  -ErrorAction SilentlyContinue
+    $b = Resolve-Path -LiteralPath $Path -ErrorAction SilentlyContinue
+    if (-not $a -or -not $b) { return $false }
+    return ($a.ProviderPath -eq $b.ProviderPath)
+}
+
+# 列出「已初始化」的 submodule 路徑；未初始化者印出警告並排除。
+# 所有會以 git -C 操作 submodule 的腳本都應改用本函式，而不是直接用 Get-SubmodulePaths。
+function Get-InitializedSubmodulePaths {
+    param([Parameter(Mandatory)][string]$RepoRoot)
+
+    $result = @()
+    foreach ($sub in (Get-SubmodulePaths -GitmodulesFile (Join-Path $RepoRoot ".gitmodules"))) {
+        if (Test-OwnWorktree -Path (Join-Path $RepoRoot $sub)) {
+            $result += $sub
+        } else {
+            Write-Host "  [!] 略過 ${sub}：未初始化或不是獨立的 git worktree，請先執行 git submodule update --init" -ForegroundColor Yellow
+        }
+    }
+    return $result
+}
+
 # 解析消費端指定的 remote 名稱；未設定時沿用 git 預設的 origin。
 function Get-RemoteName {
     param([Parameter(Mandatory)][string]$RepoRoot)

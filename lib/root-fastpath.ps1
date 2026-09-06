@@ -1,8 +1,8 @@
 ﻿function Get-FastpathSubmodules {
     param([Parameter(Mandatory)][string]$RepoRoot)
 
-    # 解析細節見 lib/repo-context.ps1 的 Get-SubmodulePaths（呼叫端一律先 dot-source 它）。
-    return @(Get-SubmodulePaths -GitmodulesFile (Join-Path $RepoRoot ".gitmodules"))
+    # 解析與防護細節見 lib/repo-context.ps1 的 Get-InitializedSubmodulePaths（呼叫端一律先 dot-source 它）。
+    return @(Get-InitializedSubmodulePaths -RepoRoot $RepoRoot)
 }
 
 function Get-GitStatusPorcelain {

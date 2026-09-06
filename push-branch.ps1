@@ -17,8 +17,8 @@ Write-Host "   Git Submodule Push Branch" -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host ""
 
-# 取得所有 submodule 路徑（解析細節見 lib/repo-context.ps1 的 Get-SubmodulePaths）
-$parsedSubmodules = @(Get-SubmodulePaths -GitmodulesFile (Join-Path $RepoRoot ".gitmodules"))
+# 取得所有「已初始化」的 submodule 路徑；解析與防護細節見 lib/repo-context.ps1。
+$parsedSubmodules = @(Get-InitializedSubmodulePaths -RepoRoot $RepoRoot)
 
 if ($parsedSubmodules.Count -eq 0) {
     Write-Host "ERROR: No submodules found in this repository" -ForegroundColor Red

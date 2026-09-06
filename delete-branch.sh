@@ -28,7 +28,7 @@ echo -e "${CYAN}   Git Submodule Branch Delete${NC}"
 echo -e "${CYAN}==========================================${NC}"
 echo
 
-SUBMODULE_LIST=$(list_submodule_paths "$PROJECT_ROOT/.gitmodules")
+SUBMODULE_LIST=$(list_initialized_submodule_paths "$PROJECT_ROOT")
 if [ -z "$SUBMODULE_LIST" ]; then
     echo -e "${RED}ERROR: No submodules found or .gitmodules not readable${NC}"
     echo -e "${RED}       解析到的 repo root: $PROJECT_ROOT${NC}"
