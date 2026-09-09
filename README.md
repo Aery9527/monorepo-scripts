@@ -122,7 +122,7 @@ exit $LASTEXITCODE
 **執行環境需求**：
 
 - **Git 2.22 以上**。腳本大量使用 `git branch --show-current`（Git 2.22 起）與 `%(refname:strip=N)`。太舊的 git 不會整支失敗，而是讓個別指令回空值、分支清單靜默變空，因此 [lib/repo-context.sh](lib/repo-context.sh) 與 [lib/repo-context.ps1](lib/repo-context.ps1) 會在啟動時檢查版本並中止。
-- **Bash 4.2 以上**。多支腳本使用 associative array 與 `mapfile`；[lib/repo-context.sh](lib/repo-context.sh) 是所有腳本共同的入口，會提前檢查版本，不足時印出明確錯誤並中止。macOS 內建的 `/bin/bash` 長年停留在 3.2，必須另外安裝較新版 bash 並確保其在 `PATH` 中排在系統版本之前。
+- **Bash 4.2 以上**。多支腳本使用 associative array 與 `mapfile`；[lib/repo-context.sh](lib/repo-context.sh) 是所有 `.sh` 腳本共同的入口，會提前檢查版本，不足時印出明確錯誤並中止。macOS 內建的 `/bin/bash` 長年停留在 3.2，必須另外安裝較新版 bash 並確保其在 `PATH` 中排在系統版本之前。
 - **行尾一律 LF**。[.gitattributes](.gitattributes) 已強制 `eol=lf`；`.sh` 若帶 CRLF，在 Linux/macOS 會直接 `bad interpreter`。
 
 [返回開頭](#quick-nav)
@@ -242,7 +242,7 @@ shim 的相對路徑寫死在檔案內，因此改變掛載位置後必須重跑
 ## 備註
 
 - `root-fastpath-commit` 的 push 順序簡化為兩層（submodule 任意順序 → root 最後），不做完整拓撲排序；若消費端的下游 repo 依賴嚴格的 push 順序，必須自行擴充。
-- `lib/` 內的共用函式一律以參數接收 repo root，不自行用相對路徑推導。
+- `lib/` 內的共用函式依各自職責以參數接收 script dir、repo root、`.gitmodules` 路徑或 submodule 路徑，沒有任何函式從自身檔案位置推導 repo root。唯一的相對路徑推導是 `resolve_repo_root` / `Get-ConsumerRepoRoot` 的獨立-clone fallback（退回上一層），該情形已在函式內註解說明。
 - **未初始化的 submodule 一律排除，不是為了方便，而是為了安全。** `.gitmodules` 有登記但尚未 `git submodule update --init` 的 submodule 在檔案系統上只是一個空目錄，`git -C <該目錄>` 會沿目錄往上找到 superproject，於是 `git -C lib/x branch -D b` 刪掉的是 **root 的分支**、`git -C lib/x checkout b` 切換的是 **root 的 HEAD**、`git -C lib/x fetch` 抓進的是 **root**。因此 [lib/repo-context.sh](lib/repo-context.sh) 的 `list_initialized_submodule_paths` 與 [lib/repo-context.ps1](lib/repo-context.ps1) 的 `Get-InitializedSubmodulePaths` 會先以 `rev-parse --show-toplevel` 確認每個路徑是「它自己的」worktree root，不通過就排除並印出略過訊息。所有腳本一律經由這兩支函式取得 submodule 清單，**嚴禁**直接用 `list_submodule_paths` / `Get-SubmodulePaths` 的結果去做 `git -C` 操作。
 - **但 `root-fastpath-commit` 的 gitlink 驗證必須用未過濾的完整清單。** root 一旦 push，它 tree 裡記錄的每一個 gitlink 都會被發佈，與該 submodule 在本機是否已初始化無關；只驗證已初始化的那些，會讓未初始化者的 gitlink 靜默上遠端，新 clone 因此指向一個從未發佈的 commit。取 gitlink 只對 root 做 `ls-tree`，用完整清單是安全的；真正無法做的是「驗證該 SHA 是否可從遠端觸及」（`branch -r --contains` 會落到 root），因此該情況一律硬中止而非略過。
 - `root-fastpath` 讀 `git status --porcelain` 一律加 `-z`。不加 `-z` 時 git 會把含空白的路徑輸出成 `"lib/real dep"`，而 `.gitmodules` 取到的是不帶引號的 `lib/real dep`，兩者永遠比不中，含空白路徑的 submodule 會被誤判成「非 submodule 檔案」而使 fast-path 永遠不可用（`core.quotePath=false` 無效，它只影響非 ASCII）。`-z` 下 rename/copy 會多輸出一個「原路徑」欄位，必須額外跳過。

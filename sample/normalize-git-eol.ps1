@@ -8,7 +8,9 @@
 #   ./scripts/normalize-git-eol.ps1 -ApplyGlobal      另外改「使用者全域」git config
 #   ./scripts/normalize-git-eol.ps1 -Renormalize:$false   跳過 git add --renormalize
 #
-# 沒有 .sh 對應版本：core.autocrlf 只在 Windows 上有實際作用，Linux/macOS 執行等同無操作。
+# 沒有 .sh 對應版本：CRLF 被寫進 index 只發生在 Windows，因此修正工具只需要 Windows 版。
+# 但它不是在非 Windows 上的空操作：預設執行的 git add --renormalize . 在任何平台
+# 都會依 .gitattributes 重新正規化並改動 index。
 # 設計理由與副作用說明見同目錄的 SAMPLE.md。
 # ===========================================
 
