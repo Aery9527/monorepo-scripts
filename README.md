@@ -97,9 +97,19 @@ git submodule add <this-repo-url> tools/monorepo-scripts
 ./monorepo-scripts/link-scripts.sh
 ```
 
-`scripts/` 不存在時會自動建立。產生的 shim 會 commit 進消費端 repo，其他人 clone 後即已具備；只有當工具集增刪工具時才需重跑 `link-scripts` 同步，詳見[備註](#notes)。
+`scripts/` 不存在時會自動建立。產生的 shim 會 commit 進消費端 repo，其他人 clone 後即已具備；shim 是需重跑才更新的快照，**工具集增刪工具**或**改變工具集的掛載位置**時都必須重跑 `link-scripts` 同步，詳見[備註](#notes)。
 
-新開 monorepo 時改跑 [init-scripts](init-scripts.sh)：它會先呼叫 `link-scripts` 產生 shim，再把 [sample/](sample/SAMPLE.md) 的消費端自有腳本（`rollback`、`normalize-git-eol`）一併複製進 `scripts/`，一步備妥整個目錄。已有 `scripts/` 的既有 repo 仍只跑 `link-scripts`。
+新開 monorepo 時改跑 [init-scripts](init-scripts.sh)：它會先呼叫 `link-scripts` 產生 shim，再把 [sample/](sample/SAMPLE.md) 的消費端自有腳本（`rollback`、`normalize-git-eol`）一併複製進 `scripts/`，一步備妥整個目錄。
+
+兩支的分工：
+
+| 情況 | 跑哪一支 | 可重跑 |
+|---|---|---|
+| `scripts/` 還不存在（新開 monorepo） | `init-scripts` | 否。任一自有腳本已存在即整批中止，不覆蓋 |
+| 工具集增刪了工具 | `link-scripts` | 是 |
+| 改變了工具集的掛載位置 | `link-scripts` | 是 |
+
+既有 `scripts/` 一律用 `link-scripts`，不是因為 `init-scripts` 多餘，而是它會被自己的 preflight 擋下：`rollback` 這類自有腳本不帶 `AUTO-GENERATED` marker，覆蓋會無聲蓋掉消費端改過的版本。`link-scripts` 只碰帶 marker 的 shim，因此重跑永遠安全。
 
 以 `delete-branch` 為例，產生出來的內容長這樣（掛載於 root 的 `monorepo-scripts/` 時）：
 
