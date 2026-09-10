@@ -44,7 +44,9 @@ function Test-Overwritable([string]$path) {
 $stems = @()
 Get-ChildItem -Path $scriptDir -Filter *.sh -File | ForEach-Object {
     $stem = $_.BaseName
-    if ($stem -eq 'link-scripts') { return }
+    # link-scripts 與 init-scripts 都是工具集側的產生器/啟動器,必須從工具集目錄直接
+    # 執行,不是消費端入口,因此不為它們產生 shim。
+    if ($stem -in @('link-scripts','init-scripts')) { return }
     if ($stem -notmatch '^[A-Za-z0-9._-]+$') { Write-Error "不合法的 stem:$stem"; exit 1 }
     if (-not (Test-Path (Join-Path $scriptDir "$stem.ps1"))) { Write-Error "$stem 缺少對應的 .ps1,不成對"; exit 1 }
     $stems += $stem
@@ -54,7 +56,7 @@ if ($stems.Count -eq 0) { Write-Error "未找到任何可連結的公開入口";
 # --- 反向檢查:孤兒 .ps1 也要 fail-fast ---
 Get-ChildItem -Path $scriptDir -Filter *.ps1 -File | ForEach-Object {
     $pstem = $_.BaseName
-    if ($pstem -eq 'link-scripts') { return }
+    if ($pstem -in @('link-scripts','init-scripts')) { return }
     if (-not (Test-Path (Join-Path $scriptDir "$pstem.sh"))) { Write-Error "$pstem 有 .ps1 但缺對應的 .sh,不成對"; exit 1 }
 }
 

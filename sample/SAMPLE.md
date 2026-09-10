@@ -60,7 +60,8 @@
 | `root-fastpath-commit.sh` / `.ps1` | [../root-fastpath-commit.sh](../root-fastpath-commit.sh) |
 
 內容與 [link-scripts](../link-scripts.sh) 的實際產出逐位元相同，只是預先產生好放在這裡。
-`link-scripts` 自己不會有 shim（它是產生器，必須從工具集目錄直接執行）。
+`link-scripts` 與 [init-scripts](../init-scripts.sh) 自己都不會有 shim（兩者都是工具集側的
+產生器／啟動器，必須從工具集目錄直接執行）。
 
 **這組 shim 是快照，不是活連結。** 工具集增刪工具後本目錄必須一併更新；消費端則是重跑
 `link-scripts` 就會自動同步。取用方式見[下方](#usage)。
@@ -187,25 +188,33 @@ submodule.lib/pathutil.path
 
 ### 建立新的消費端 repo
 
+掛載工具集後執行 [init-scripts](../init-scripts.sh)，`scripts/` 即備妥，不需要手動複製：
+
 ```bash
 git submodule add <this-repo-url> monorepo-scripts
-mkdir -p scripts
-cp monorepo-scripts/sample/*.sh monorepo-scripts/sample/*.ps1 scripts/
-chmod +x scripts/*.sh
+git submodule update --init
+# Unix/macOS
+./monorepo-scripts/init-scripts.sh
+# Windows
+.\monorepo-scripts\init-scripts.ps1
 ```
 
-`SAMPLE.md` 不要複製，它是本目錄的說明文件。
+`init-scripts` 做兩件事，掛在 `tools/monorepo-scripts` 這種較深的位置一樣正確：
 
-**shim 的相對路徑寫死在檔案內**（`../monorepo-scripts/<name>.sh`），所以上面這組檔案只在
-工具集掛載於 root 的 `monorepo-scripts/` 時可直接使用。改掛在別的位置（例如
-`tools/monorepo-scripts`）時，複製後**必須**再跑一次產生器覆寫路徑：
+1. 呼叫 [link-scripts](../link-scripts.sh) 依實際掛載位置產生 7 組 shim，並以
+   `git update-index --add --chmod=+x` 把 `.sh` 標記為可執行。
+2. 複製本目錄內 `link-scripts` 產不出來的自有腳本：副檔名為 `.sh` / `.ps1`，且檔頭前兩行不含
+   `AUTO-GENERATED` marker 者。`SAMPLE.md` 這類 `.md` 不在白名單內，一律不複製。
 
-```bash
-./tools/monorepo-scripts/link-scripts.sh
-```
+**它刻意不複製本目錄的 shim。** shim 的相對路徑寫死在檔案內（`../monorepo-scripts/<name>.sh`），
+只在工具集掛於 root 下一層時正確，因此一律交給 `link-scripts` 重算。
 
-任何情況下重跑 `link-scripts` 都是安全且推薦的：它會依實際掛載位置重算路徑、補上工具集
-新增的工具、並以 `git update-index --add --chmod=+x` 把 `.sh` 標記為可執行。
+自有腳本不帶 `AUTO-GENERATED` marker，`link-scripts` 的 collision 防護涵蓋不到它們，直接覆蓋
+會無聲蓋掉消費端已修改的版本。`init-scripts` 因此採先驗後寫：任一目標已存在就整批中止，
+且中止時尚未呼叫 `link-scripts`，`scripts/` 完全維持原狀。要重新產生時自行刪除該檔再重跑。
+
+只需要同步 shim（工具集增刪工具、或改變掛載位置）時，直接重跑 `link-scripts` 即可，
+任何情況下都是安全的。
 
 ### 只取自有腳本
 
@@ -216,6 +225,9 @@ cp monorepo-scripts/sample/rollback.sh  scripts/
 cp monorepo-scripts/sample/rollback.ps1 scripts/
 chmod +x scripts/rollback.sh
 ```
+
+`.ps1` 一律用位元組複製（`cp` / `Copy-Item`），不可經 `Get-Content` / `Set-Content` 來回讀寫：
+[normalize-git-eol.ps1](normalize-git-eol.ps1) 帶 UTF-8 BOM，被剝除後 PowerShell 5.1 會解析錯中文內容。
 
 ### 檔案格式與命名
 

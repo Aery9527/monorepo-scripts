@@ -40,7 +40,9 @@ declare -a STEMS=()
 for sh in "$SCRIPT_DIR"/*.sh; do
     [ -e "$sh" ] || continue
     stem="$(basename "$sh" .sh)"
-    [ "$stem" = "link-scripts" ] && continue
+    # link-scripts 與 init-scripts 都是工具集側的產生器/啟動器,必須從工具集目錄直接
+    # 執行,不是消費端入口,因此不為它們產生 shim。
+    case "$stem" in link-scripts|init-scripts) continue ;; esac
     if ! [[ "$stem" =~ ^[A-Za-z0-9._-]+$ ]]; then
         echo "ERROR: 不合法的 stem:$stem" >&2
         exit 1
@@ -60,7 +62,7 @@ fi
 for ps in "$SCRIPT_DIR"/*.ps1; do
     [ -e "$ps" ] || continue
     pstem="$(basename "$ps" .ps1)"
-    [ "$pstem" = "link-scripts" ] && continue
+    case "$pstem" in link-scripts|init-scripts) continue ;; esac
     if [ ! -f "$SCRIPT_DIR/$pstem.sh" ]; then
         echo "ERROR: $pstem 有 .ps1 但缺對應的 .sh,不成對" >&2
         exit 1

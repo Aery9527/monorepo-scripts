@@ -99,6 +99,8 @@ git submodule add <this-repo-url> tools/monorepo-scripts
 
 `scripts/` 不存在時會自動建立。產生的 shim 會 commit 進消費端 repo，其他人 clone 後即已具備；只有當工具集增刪工具時才需重跑 `link-scripts` 同步，詳見[備註](#notes)。
 
+新開 monorepo 時改跑 [init-scripts](init-scripts.sh)：它會先呼叫 `link-scripts` 產生 shim，再把 [sample/](sample/SAMPLE.md) 的消費端自有腳本（`rollback`、`normalize-git-eol`）一併複製進 `scripts/`，一步備妥整個目錄。已有 `scripts/` 的既有 repo 仍只跑 `link-scripts`。
+
 以 `delete-branch` 為例，產生出來的內容長這樣（掛載於 root 的 `monorepo-scripts/` 時）：
 
 ```bash
@@ -145,6 +147,7 @@ exit $LASTEXITCODE
 | [sync-remote-branches](sync-remote-branches.sh) | 清點各 repo 的 remote branch 同步狀態 |
 | [root-fastpath-commit](root-fastpath-commit.sh) | root 只有 submodule ref 漂移時，一鍵 commit + push |
 | [link-scripts](link-scripts.sh) | 在消費端的 `scripts/` 產生／更新轉發 shim |
+| [init-scripts](init-scripts.sh) | 新開 monorepo 用：跑 `link-scripts` 產生 shim，再把 [sample/](sample/SAMPLE.md) 的消費端自有腳本複製進 `scripts/` |
 
 [返回開頭](#quick-nav)
 
@@ -164,9 +167,9 @@ exit $LASTEXITCODE
 | 各 repo 都有同名的 git remote | 硬 | 全部涉及遠端的操作 | 預設 `origin`；名稱不同時必須設定 [remote.txt](#config)，否則該 remote 的分支完全不會被列舉：本地也有同名分支的會顯示成「只有本地」，只存在於遠端的則整個不出現 |
 | Git 2.22 以上 | 硬 | 全部 | 啟動時檢查 `git --version`，不足或取不到版本即印出錯誤後中止 |
 | Bash 4.2 以上 | 硬 | 全部 `.sh` | [lib/repo-context.sh](lib/repo-context.sh) 印出版本錯誤後中止 |
-| 消費端有 `scripts/` 目錄 | 軟 | 僅 `link-scripts` | 不存在時自動建立 |
+| 消費端有 `scripts/` 目錄 | 軟 | 僅 `link-scripts` / `init-scripts` | 不存在時自動建立 |
 | 工具集位於消費端 repo 之內 | 軟 | 分支腳本 | 由 git 判定，掛載深度不限；完全在 repo 外時退回上一層目錄，再由「找不到 submodule」錯誤帶出解析路徑 |
-| 工具集位於消費端 repo 之內 | 硬 | 僅 `link-scripts` | 無法算出相對路徑就無法產生正確 shim，印出 root 與工具集位置後 `exit 1` |
+| 工具集位於消費端 repo 之內 | 硬 | 僅 `link-scripts` / `init-scripts` | 無法算出相對路徑就無法產生正確 shim，印出 root 與工具集位置後 `exit 1` |
 | [scripts/config/](#config) 的設定檔 | 軟 | 對應腳本 | 採用各自的預設值 |
 
 [返回開頭](#quick-nav)
@@ -189,6 +192,7 @@ exit $LASTEXITCODE
 | `root-fastpath-commit` | 否 | 否 | 條件符合（root 只有 submodule ref 漂移）就直接 commit + push，沒有 dry-run |
 | `sync-remote-branches` | 否 | 是（清點後另問是否推送：全部推送／逐筆確認／取消） | 清點階段唯讀；選擇推送才會 `git push -u` 補齊缺失的遠端分支 |
 | `link-scripts` | 否 | 否 | 產生／更新 shim，並以 `git update-index --add --chmod=+x` 把 `.sh` 標記為可執行（會改動消費端 index） |
+| `init-scripts` | 否 | 否 | 先驗後寫：任一自有腳本在 `scripts/` 已存在就整批中止，不覆蓋。中止時 `link-scripts` 尚未執行，`scripts/` 維持原狀 |
 
 想知道某支腳本的實際行為，順序是：先看這張表 → 還不夠再讀腳本開頭的參數解析區塊，**嚴禁**用猜測的旗標去執行它。
 
@@ -219,7 +223,7 @@ exit $LASTEXITCODE
 ## 消費端腳本範例
 
 [sample/](sample/SAMPLE.md) 是一個消費端 `scripts/` 目錄的完整範例，假設工具集掛在消費端 root 的
-`monorepo-scripts/`。新開 monorepo 時可整份複製到 `scripts/`，直接得到可運作的環境。
+`monorepo-scripts/`。新開 monorepo 時執行 [init-scripts](init-scripts.sh) 即可備妥 `scripts/`，不需手動複製。
 
 | 內容 | 說明 |
 |------|------|
@@ -232,6 +236,9 @@ exit $LASTEXITCODE
 
 shim 的相對路徑寫死在檔案內，因此改變掛載位置後必須重跑 `link-scripts` 覆寫；工具集增刪工具時，
 `sample/` 的 shim 也要一併更新（消費端則重跑 `link-scripts` 即可）。
+
+**`sample/` 的 shim 只在工具集掛於 root 下一層時正確**，因此 [init-scripts](init-scripts.sh) 不複製它們，
+改由 `link-scripts` 依實際掛載位置產生；它只複製 `link-scripts` 產不出來的自有腳本。
 
 [返回開頭](#quick-nav)
 
@@ -248,7 +255,9 @@ shim 的相對路徑寫死在檔案內，因此改變掛載位置後必須重跑
 - `root-fastpath` 讀 `git status --porcelain` 一律加 `-z`。不加 `-z` 時 git 會把含空白的路徑輸出成 `"lib/real dep"`，而 `.gitmodules` 取到的是不帶引號的 `lib/real dep`，兩者永遠比不中，含空白路徑的 submodule 會被誤判成「非 submodule 檔案」而使 fast-path 永遠不可用（`core.quotePath=false` 無效，它只影響非 ASCII）。`-z` 下 rename/copy 會多輸出一個「原路徑」欄位，必須額外跳過。
 - `link-scripts` 產生的 shim 是**需重跑才更新的快照**，不是活連結；工具集新增或移除工具後，必須重跑 `link-scripts` 並在消費端 repo 重新 commit。
 - `link-scripts` 的 stale 偵測（shim 存在但來源腳本已消失）僅**報告**，不自動刪除，必須由開發者以 `git diff` 審查後自行處理。
-- 執行 `link-scripts` 前必須先在消費端 repo 執行 `git submodule update --init`，確保工具集內容已存在。
+- 執行 `link-scripts` 或 `init-scripts` 前必須先在消費端 repo 執行 `git submodule update --init`，確保工具集內容已存在。
+- `init-scripts` 不寫死檔名清單，改用兩道規則挑出要複製的檔案：副檔名須是 `.sh` 或 `.ps1`（白名單，`.md` 等一律不取），且檔頭前兩行不得含 `AUTO-GENERATED` marker（帶 marker 者是 shim，交給 `link-scripts` 產生）。`sample/` 日後增減自有腳本時 `init-scripts` 不必跟著改。marker 只認前兩行，自有腳本在註解中提到這段文字不會被誤判；副檔名與 marker 的比對在 `.sh` / `.ps1` 兩版都分大小寫，避免 `NOTES.MD` 這類檔名只被其中一版擋下。
+- `link-scripts` 不為 `link-scripts` 與 `init-scripts` 自己產生 shim：兩者都是工具集側的產生器／啟動器，必須從工具集目錄直接執行，不是消費端入口。
 - `delete-branch` 的快速清除模式要求 root 與所有 submodule 目前分支完全一致才會執行；且不比照互動式多選保護 `main`/`master`/`develop`，安全網只有「逐分支確認已完整推送到遠端」。
 - 分支清點一律只列舉 `refs/remotes/<remote>/` 底下的 ref，不使用 `git branch -r`（那會把其他 remote 的分支一併當成分支名）。唯一例外是 `root-fastpath-commit` 的可達性驗證，它用 `git branch -r --contains` 查出所有 remote 後，再以前綴篩出設定的 remote。因此同一個 monorepo 內的 root 與所有 submodule 必須使用相同的 remote 名稱；額外的 remote 可以存在，但不會被清點。
 
